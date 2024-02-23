@@ -9,22 +9,31 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new(args: &[String]) -> Result<Config, &'static str> {
-        if args.len() < 3 {
-            return Err("not enough arguments");
-        }
-        let query = args[1].clone();
-        let filename = args[2].clone();
+    pub fn new<T>(mut args: T) -> Result<Config, &'static str>
+    where
+        T: Iterator<Item = String>,
+    {
+        args.next();
+
+        let query = match args.next() {
+            Some(arg) => arg,
+            None => return Err("Didn't get aquery string"),
+        };
+        let filename = match args.next() {
+            Some(arg) => arg,
+            None => return Err("Didn't get a file name"),
+        };
 
         let mut case_sensitive = env::var("CASE_INSENSITIVE").is_err();
 
-        if args.len() > 3 {
-            case_sensitive = match args[3].to_lowercase().as_str() {
+        case_sensitive = match args.next() {
+            Some(arg) => match arg.to_lowercase().as_str() {
                 "true" => true,
                 "false" => false,
                 _ => case_sensitive,
-            };
-        }
+            },
+            None => case_sensitive,
+        };
 
         Ok(Config { query, filename , case_sensitive})
     }
@@ -50,15 +59,9 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>>{
 }
 
 pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
-    let mut results = Vec::new();
-
-    for line in contents.lines() {
-        if line.contains(query) {
-            results.push(line);
-        }
-    }
-
-    results
+    contents.lines()
+        .filter(|line| line.contains(query)) 
+        .collect()
 }
 
 pub fn search_case_insenstive<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
@@ -87,7 +90,7 @@ mod test {
     #[test]
     fn case_new() {
         let args = vec![String::from(MINIGREP), String::from(QUERY), String::from(FILENAME)];
-        let config = Config::new(&args).unwrap();
+        let config = Config::new(args.into_iter()).unwrap();
         assert_eq!(config.query, QUERY);
         assert_eq!(config.filename, FILENAME);
         assert_eq!(config.case_sensitive, true);
@@ -96,7 +99,7 @@ mod test {
     #[test]
     fn case_new_sensitive_from_args() {
         let args = vec![String::from(MINIGREP), String::from(QUERY), String::from(FILENAME), String::from("true")];
-        let config = Config::new(&args).unwrap();
+        let config = Config::new(args.into_iter()).unwrap();
         assert_eq!(config.query, QUERY);
         assert_eq!(config.filename, FILENAME);
         assert_eq!(config.case_sensitive, true);
@@ -105,14 +108,14 @@ mod test {
     #[test]
     fn case_new_with_no_args() {
         let args = vec![String::from(MINIGREP)];
-        let config = Config::new(&args);
+        let config = Config::new(args.into_iter());
         assert!(config.is_err());
     }
 
     #[test]
     fn case_new_with_case_no_env() {
         let args = vec![String::from(MINIGREP), String::from("query"), String::from(FILENAME)];
-        let config = Config::new(&args).unwrap();
+        let config = Config::new(args.into_iter()).unwrap();
         assert_eq!(config.case_sensitive, true);
     }
 
@@ -120,7 +123,7 @@ mod test {
     fn case_new_with_case_env() {
         env::set_var("CASE_INSENSITIVE", "1");
         let args = vec![String::from(MINIGREP), String::from("query"), String::from(FILENAME)];
-        let config = Config::new(&args).unwrap();
+        let config = Config::new(args.into_iter()).unwrap();
         assert_eq!(config.case_sensitive, false);
         env::remove_var("CASE_INSENSITIVE");
     }
@@ -128,7 +131,7 @@ mod test {
     #[test]
     fn case_run() {
         let args = vec![String::from(MINIGREP), String::from("query"), String::from(FILENAME)];
-        let config = Config::new(&args).unwrap();
+        let config = Config::new(args.into_iter()).unwrap();
         let result = run(config);
 
         assert!(result.is_ok());
@@ -137,7 +140,7 @@ mod test {
     #[test]
     fn case_run_with_none_file() {
         let args = vec![String::from(MINIGREP), String::from(QUERY), String::from("none")];
-        let config = Config::new(&args).unwrap();
+        let config = Config::new(args.into_iter()).unwrap();
 
         let result = run(config);
 
